@@ -3,6 +3,29 @@ const Diff = require('diff');
 const { htmlToText } = require('html-to-text');
 
 /**
+ * Checks if a diff already exists for the given snapshot pair.
+ * @param {Object} supabase - Supabase client instance
+ * @param {number} snapshotId1 - Older snapshot ID
+ * @param {number} snapshotId2 - Newer snapshot ID
+ * @returns {boolean} True if diff exists
+ */
+async function diffExists(supabase, snapshotId1, snapshotId2) {
+  const { data, error } = await supabase
+    .from('changes')
+    .select('id')
+    .eq('snapshot_id1', snapshotId1)
+    .eq('snapshot_id2', snapshotId2)
+    .limit(1);
+
+  if (error) {
+    console.error('Error checking existing diff:', error.message);
+    return false; // Default to false on error to proceed with insertion
+  }
+
+  return data.length > 0;
+}
+
+/**
  * Computes differences between consecutive snapshots and stores them.
  * @param {Object} supabase - Supabase client instance
  */
@@ -41,6 +64,13 @@ async function computeDiffs(supabase) {
 
     if (isDiffEmpty(diff)) {
       console.log(`No changes detected for ${source.url}`);
+      continue;
+    }
+    
+    // Check if diff already exists
+    const exists = await diffExists(supabase, snapshotOld.id, snapshotNew.id);
+    if (exists) {
+      console.log(`Diff already exists for ${source.url} between snapshots ${snapshotOld.id} and ${snapshotNew.id}`);
       continue;
     }
 
