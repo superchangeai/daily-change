@@ -1,7 +1,10 @@
 name: Daily Changes
+
 on:
   schedule:
     - cron: '20 0 * * *' # Runs daily at 20 minutes past midnight UTC
+    workflow_dispatch: # Allows manual triggering from GitHub UI
+
 jobs:
   run:
     runs-on: ubuntu-latest
