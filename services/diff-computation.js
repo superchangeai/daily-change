@@ -66,7 +66,7 @@ async function computeDiffs(supabase) {
       console.log(`No changes detected for ${source.url}`);
       continue;
     }
-    
+
     // Check if diff already exists
     const exists = await diffExists(supabase, snapshotOld.id, snapshotNew.id);
     if (exists) {
@@ -81,7 +81,8 @@ async function computeDiffs(supabase) {
         source_id: source.id,
         snapshot_id1: snapshotOld.id,
         snapshot_id2: snapshotNew.id,
-        diff: diff
+        diff: diff,
+        timestamp: new Date().toISOString()
       });
 
     if (insertError) {
