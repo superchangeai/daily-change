@@ -1,5 +1,13 @@
 # daily-changes
 
+A lightweight Node.js service that computes differences between consecutive DOM snapshots and classifies them using an LLM, running daily via GitHub Actions.
+
+## Setup
+
+1. **Install Dependencies:**
+   ```bash
+   npm install
+
 ## Database Schema
 
 The project uses two Supabase tables:
