@@ -29,10 +29,11 @@ LIMIT 2
 2. Determine Content Type:
 - Attempt to parse content as JSON. If successful, it’s Readability-extracted data; otherwise, treat it as HTML.
 3. Compute Diff:
-- JSON: Parse both snapshots’ content fields and diff with deep-diff or diff.
-- HTML: Use html-differ to compute differences, optionally preprocessing to filter out noise.
+- JSON case: Parse both snapshots’ content fields and diff with deep-diff or diff.
+- HTML case: Use html-differ to compute differences, optionally preprocessing to filter out noise.
+- Detect if there is no diff, do not store if no changes happened.
 4. Store Diff:
-- Save the diff in a `changes` table with references to the snapshot IDs:
+- If any, save the diff in the `changes` table with references to the snapshot IDs:
 ```sql
 INSERT INTO changes (source_id, snapshot_id1, snapshot_id2, diff, timestamp)
 VALUES (:source_id, :prev_id, :latest_id, :diff_json, NOW())
@@ -41,6 +42,7 @@ VALUES (:source_id, :prev_id, :latest_id, :diff_json, NOW())
 
 - Focus on Meaningful Changes: Using extracted content reduces noise from layout or styling changes.
 - Flexibility: Fallback to HTML diffs ensures coverage for all pages, even those not suited to Readability.
+- Efficiency: Store only diff when changes occurred.
 
 ## Step 2: Classifying Changes
 
@@ -48,7 +50,7 @@ VALUES (:source_id, :prev_id, :latest_id, :diff_json, NOW())
 With diffs computed, classify them into categories (e.g., breaking change, security update, new feature) using an LLM for semantic understanding.
 
 ### Strategy
-- Input: Use the diff from Step 1 as the primary input, supplemented with context (e.g., URL, timestamps).
+- Input: Use the diff from Step 1 as the primary input, supplemented with context (e.g., URL, timestamps). Only happens when a diff was found and stored, so that we do not make LLM calls for no reasons.
 - LLM Classification:
     - Prompt the LLM with the diff and a classification task:
 
@@ -71,10 +73,12 @@ Classify this change into one of: breaking change, security update, performance 
     WHERE classification IS NULL
     ```
 2. Classify with LLM:
-    - Use an LLM API (e.g., OpenAI’s GPT or Anthropic’s Claude) to process the prompt.
+    - Use an LLM API to process the prompt.
+        - Focus on `gemini-2.0-flash-exp` since it's free to consume with up to 1500 requests per day, (15 requests per minute and 1M tokens per minute max)
+        - Use only OpenAI-compatible endpoints, so that we can move to another model whenever. See https://ai.google.dev/gemini-api/docs/openai#node.js for Google
     - Parse the response for category and explanation.
 3. Store Results:
-    - Update the `diff` table:
+    - Update the `changes` table:
     ```sql
     UPDATE changes
     SET classification = :category, explanation = :explanation
@@ -99,7 +103,7 @@ Classify this change into one of: breaking change, security update, performance 
 3. Workflow
 - Snapshot Capture: Triggered daily (via GitHub Actions), capturing snapshots for all URLs in sources. See: https://github.com/tgenaitay/daily-snapshot
 - Diff Computation: A daily job processes new snapshots, computes diffs, and stores them.
-- Classification:A subsequent job classifies diffs and updates the database.
+- Classification: A subsequent job classifies diffs and updates the database.
 
 4. Scalability and Efficiency
 - Incremental Processing: Only process URLs with new snapshots (check last_snapshot_at).
