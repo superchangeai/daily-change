@@ -3,19 +3,24 @@ name: Daily Changes
 on:
   schedule:
     - cron: '20 0 * * *' # Runs daily at 20 minutes past midnight UTC
-    workflow_dispatch: # Allows manual triggering from GitHub UI
+  workflow_dispatch: # Allows manual triggering from GitHub UI
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+      # Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
+      # Install dependencies
       - name: Install dependencies
         run: npm install
+      # Run the change job with Supabase credentials from secrets
       - name: Run change job
         run: node change-job.js
         env:
