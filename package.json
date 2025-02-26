@@ -11,7 +11,8 @@
       "diff": "^5.2.0",
       "html-to-text": "^9.0.5",
       "openai": "^4.65.0",
-      "dotenv": "^16.4.5"
+      "dotenv": "^16.4.5",
+      "@literalai/client": "^0.1.5"
     },
     "engines": {
       "node": ">=16"
