@@ -117,7 +117,7 @@ function computeTextDiff(content1, content2) {
     text2 = htmlToText(content2, { wordwrap: false });
   }
 
-  return Diff.diffLines(text1, text2);
+  return Diff.diffWords(text1, text2);
 }
 
 /**
