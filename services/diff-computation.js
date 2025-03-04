@@ -105,15 +105,17 @@ function computeTextDiff(content1, content2) {
   // Try parsing as JSON; if it fails, assume HTML
   try {
     const json1 = JSON.parse(content1);
-    text1 = json1.content || '';
-  } catch {
+    text1 = json1.textContent || '';
+  } catch(e) {
+    console.log('Failed to parse JSON for content1, falling back to HTML:', e.message);
     text1 = htmlToText(content1, { wordwrap: false });
   }
 
   try {
     const json2 = JSON.parse(content2);
-    text2 = json2.content || '';
-  } catch {
+    text2 = json2.textContent || '';
+  } catch(e) {
+    console.log('Failed to parse JSON for content2, falling back to HTML:', e.message);
     text2 = htmlToText(content2, { wordwrap: false });
   }
 
