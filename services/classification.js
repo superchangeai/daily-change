@@ -39,17 +39,34 @@ async function classifyChanges(supabase, openai) {
   for (const change of changes) {
     const url = sourceMap.get(change.source_id);
     const diffString = diffToString(change.diff);
+    console.log(`Diffstring: ${diffString}`);
 
     const prompt = `
-Here is a change in the documentation for ${url}:
+    Below is a line-level change in the documentation for ${url}, where "----" indicates a line.
+    We will highlight with "----content below was added----" and "----" the part that was added.
+    We will have between "----content below was removed----" and "----" anything removed.
+    The content is raw HTML from a changelog.
 
-${diffString}
+    Change:
+    ${diffString}
 
-Classify this change into one of: breaking change, security update, performance improvement, new feature, minor bug fix, or other. Provide a brief explanation.
-Respond in JSON format with two fields: "classification" and "explanation".
-Classification must be strictly one of the following propositions: ['breaking'::text, 'security'::text, 'performance'::text, 'new_feature'::text, 'minor_fix'::text, 'other'::text]
-
+    Classify the change(s) into one of: breaking change, security update, performance improvement, new feature, minor bug fix, or other. Provide a brief explanation.
+    Respond in JSON format with two fields: "classification" and "explanation".
+    Classification must be one of: ["breaking", "security", "performance", "new_feature", "minor_fix", "other"]
     `.trim();
+
+//     const prompt = `
+// Here is a change in the documentation for ${url}:
+
+// ${diffString}
+
+// Classify this change into one of: breaking change, security update, performance improvement, new feature, minor bug fix, or other. Provide a brief explanation.
+// Respond in JSON format with two fields: "classification" and "explanation".
+// Classification must be strictly one of the following propositions: ['breaking'::text, 'security'::text, 'performance'::text, 'new_feature'::text, 'minor_fix'::text, 'other'::text]
+
+//     `.trim();
+
+    console.log(`Prompt: ${prompt}`)
 
     try {
       const response = await openai.chat.completions.create({
@@ -85,14 +102,23 @@ Classification must be strictly one of the following propositions: ['breaking'::
  * @param {Array} diff - Diff array from the diff library
  * @returns {string} Formatted diff string
  */
+// function diffToString(diff) {
+//   return diff
+//     .map(part => {
+//       if (part.added) return `+ ${part.value}`;
+//       if (part.removed) return `- ${part.value}`;
+//       return `  ${part.value}`;
+//     })
+//     .join('');
+// }
 function diffToString(diff) {
   return diff
     .map(part => {
-      if (part.added) return `+ ${part.value}`;
-      if (part.removed) return `- ${part.value}`;
-      return `  ${part.value}`;
+      if (part.added) return `\n ----content below was added----\n\n${part.value}`;
+      if (part.removed) return `\n ----content below was removed----\n\n${part.value}`;
+      return `\n----\n ${part.value}`;
     })
-    .join('');
+    .join(' ');
 }
 
 module.exports = { classifyChanges };

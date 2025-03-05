@@ -4,17 +4,18 @@
     "description": "A lightweight Node.js service to compute and classify DOM snapshot changes",
     "main": "change-job.js",
     "scripts": {
-      "start": "node change-job.js"
+        "start": "node change-job.js"
     },
     "dependencies": {
-      "@supabase/supabase-js": "^2.45.4",
-      "diff": "^5.2.0",
-      "html-to-text": "^9.0.5",
-      "openai": "^4.65.0",
-      "dotenv": "^16.4.5",
-      "@literalai/client": "^0.1.5"
+        "@literalai/client": "^0.1.5",
+        "@supabase/supabase-js": "^2.45.4",
+        "diff": "^5.2.0",
+        "dotenv": "^16.4.5",
+        "html-to-text": "^9.0.5",
+        "jsdom": "^26.0.0",
+        "openai": "^4.65.0"
     },
     "engines": {
-      "node": ">=16"
+        "node": ">=16"
     }
 }
