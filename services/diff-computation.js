@@ -1,7 +1,3 @@
-const { createClient } = require('@supabase/supabase-js');
-const Diff = require('diff');
-const { htmlToText } = require('html-to-text');
-
 /**
  * Checks if a diff already exists for the given snapshot pair.
  * @param {Object} supabase - Supabase client instance
@@ -26,10 +22,11 @@ async function diffExists(supabase, snapshotId1, snapshotId2) {
 }
 
 /**
- * Computes differences between consecutive snapshots and stores them.
+ * Computes differences between consecutive snapshots using an LLM and stores them.
  * @param {Object} supabase - Supabase client instance
+ * @param {Object} openai - OpenAI client instance for Google Gemini
  */
-async function computeDiffs(supabase) {
+async function computeDiffs(supabase, openai) {
   // Fetch all sources
   const { data: sources, error: sourcesError } = await supabase
     .from('sources')
@@ -60,10 +57,12 @@ async function computeDiffs(supabase) {
     }
 
     const [snapshotNew, snapshotOld] = snapshots;
-    const diff = computeTextDiff(snapshotOld.content, snapshotNew.content);
+    const textOld = extractText(snapshotOld.content);
+    const textNew = extractText(snapshotNew.content);
 
-    if (isDiffEmpty(diff)) {
-      console.log(`No changes detected for ${source.url}`);
+    const diffJson = await getLLMChangeSummary(openai, textOld, textNew, source.url);
+    if (!diffJson || !diffJson.summary || diffJson.summary.toLowerCase().includes('no significant changes')) {
+      console.log(`No significant changes detected for ${source.url}`);
       continue;
     }
 
@@ -74,15 +73,15 @@ async function computeDiffs(supabase) {
       continue;
     }
 
-    // Store the diff in the changes table
+    // Store the diff as a JSONB object
     const { error: insertError } = await supabase
       .from('changes')
       .insert({
         source_id: source.id,
         snapshot_id1: snapshotOld.id,
         snapshot_id2: snapshotNew.id,
-        diff: diff,
-        timestamp: new Date().toISOString()
+        diff: diffJson, // Store the JSON object directly as JSONB
+        timestamp: new Date().toISOString(),
       });
 
     if (insertError) {
@@ -94,41 +93,89 @@ async function computeDiffs(supabase) {
 }
 
 /**
- * Computes a text-based diff between two content strings.
- * @param {string} content1 - Older snapshot content
- * @param {string} content2 - Newer snapshot content
- * @returns {Array} Diff array from the diff library
+ * Extracts text from snapshot content.
+ * @param {string} content - Snapshot content (JSON or raw)
+ * @returns {string} Extracted text
  */
-function computeTextDiff(content1, content2) {
-  let text1, text2;
-
-  // Try parsing as JSON; if it fails, assume HTML
+function extractText(content) {
   try {
-    const json1 = JSON.parse(content1);
-    text1 = json1.textContent || '';
-  } catch(e) {
-    console.log('Failed to parse JSON for content1, falling back to HTML:', e.message);
-    text1 = htmlToText(content1, { wordwrap: false });
+    const json = JSON.parse(content);
+    return json.textContent || '';
+  } catch (e) {
+    console.log('Falling back to raw text:', e.message);
+    return content; // Assume plain text if not JSON
   }
-
-  try {
-    const json2 = JSON.parse(content2);
-    text2 = json2.textContent || '';
-  } catch(e) {
-    console.log('Failed to parse JSON for content2, falling back to HTML:', e.message);
-    text2 = htmlToText(content2, { wordwrap: false });
-  }
-
-  return Diff.diffLines(text1, text2);
 }
 
 /**
- * Checks if a diff contains no meaningful changes.
- * @param {Array} diff - Diff array from the diff library
- * @returns {boolean} True if no additions or removals
+ * Gets a human-readable change summary from the LLM as a JSON object.
+ * @param {Object} openai - OpenAI client instance
+ * @param {string} oldText - Older snapshot text
+ * @param {string} newText - Newer snapshot text
+ * @param {string} url - Source URL for context
+ * @returns {Object|null} Parsed JSON object or null on error
  */
-function isDiffEmpty(diff) {
-  return diff.every(part => !part.added && !part.removed);
+/**
+ * Gets a human-readable change summary from the LLM as a JSON object with a single "summary" key.
+ * @param {Object} openai - OpenAI client instance
+ * @param {string} oldText - Older snapshot text
+ * @param {string} newText - Newer snapshot text
+ * @param {string} url - Source URL for context
+ * @returns {Object|null} Parsed JSON object with "summary" key or null on error
+ */
+async function getLLMChangeSummary(openai, oldText, newText, url) {
+  const systemPrompt = `
+  You are a helpful assistant that strictly follows instructions. 
+  Do not repeat yourself.
+  `;
+  const userPrompt = `
+    Compare the following two texts from the documentation at ${url} and summarize the meaningful changes in a concise, human-readable format. 
+    Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
+    This page is most likely a changelog, or release note, or API specs.
+    In this context, significant changes can be many things: breaking changes, security updates, performance improvements, new options or features or models added, new dates, extended support, change of dates, deprecations, removed field, renamed field, retired dates, end of life, end of support... 
+    If no significant changes are found, state "No significant changes detected." in the summary.
+    Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
+    Respond with a JSON object containing only the "summary" key with the change summary as a string. Do not include any additional JSON keys beyond "summary".
+
+    Old text:
+    ${oldText.slice(0, 20000)}
+
+    New text:
+    ${newText.slice(0, 20000)}
+  `.trim();
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'llama-3.1-70b-instruct', // Adjust model name if necessary
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 1000,
+      temperature: 0,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "ChangeSummary",
+          schema: {
+            type: "object",
+            properties: {
+              summary: { type: "string" }
+            },
+            additionalProperties: false,
+            required: ["summary"]
+          }
+        }
+      }
+    });
+
+    const jsonString = response.choices[0].message.content;
+    const parsedJson = JSON.parse(jsonString); // Convert JSON string to object
+    return parsedJson; // Returns { summary: "..." }
+  } catch (error) {
+    console.error('Error getting LLM summary:', error.message);
+    return null; // Return null on error to skip processing
+  }
 }
 
 module.exports = { computeDiffs };

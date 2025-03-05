@@ -1,5 +1,3 @@
-const OpenAI = require('openai');
-
 /**
  * Classifies unclassified changes using an LLM.
  * @param {Object} supabase - Supabase client instance
@@ -23,7 +21,7 @@ async function classifyChanges(supabase, openai) {
   }
 
   // Fetch URLs for all source_ids
-  const sourceIds = [...new Set(changes.map(c => c.source_id))];
+  const sourceIds = [...new Set(changes.map((c) => c.source_id))];
   const { data: sources, error: sourcesError } = await supabase
     .from('sources')
     .select('id, url')
@@ -34,52 +32,74 @@ async function classifyChanges(supabase, openai) {
     return;
   }
 
-  const sourceMap = new Map(sources.map(s => [s.id, s.url]));
+  const sourceMap = new Map(sources.map((s) => [s.id, s.url]));
 
   for (const change of changes) {
     const url = sourceMap.get(change.source_id);
-    const diffString = diffToString(change.diff);
-    console.log(`Diffstring: ${diffString}`);
+
+    // Ensure diff is a valid JSON object with a summary
+    if (!change.diff || !change.diff.summary) {
+      console.error(`Change ${change.id} has invalid diff format; expected a JSON object with a 'summary' field`);
+      continue;
+    }
+    const diffSummary = change.diff.summary; // Extract summary from JSON object
+
+    console.log(`Change ${change.id} diff type:`, typeof change.diff);
+    console.log(`Change ${change.id} diff content:`, change.diff);
 
     const prompt = `
-    Below is a line-level change in the documentation for ${url}, where "----" indicates a line.
-    We will highlight with "----content below was added----" and "----" the part that was added.
-    We will have between "----content below was removed----" and "----" anything removed.
-    The content is raw HTML from a changelog.
+      Below is a change summary for the documentation at ${url}:
 
-    Change:
-    ${diffString}
+      Change:
+      ${diffSummary}
 
-    Classify the change(s) into one of: breaking change, security update, performance improvement, new feature, minor bug fix, or other. Provide a brief explanation.
-    Respond in JSON format with two fields: "classification" and "explanation".
-    Classification must be one of: ["breaking", "security", "performance", "new_feature", "minor_fix", "other"]
+      Classify the change into one of the following categories: breaking change, security update, performance improvement, new feature, minor bug fix, or other. Provide a brief explanation for your classification.
+      Respond with a JSON object containing exactly two fields: "classification" and "explanation".
+      The "classification" field must be one of: ["breaking", "security", "performance", "new_feature", "minor_fix", "other"].
+      The "explanation" field must be a concise string justifying the classification.
     `.trim();
 
-//     const prompt = `
-// Here is a change in the documentation for ${url}:
-
-// ${diffString}
-
-// Classify this change into one of: breaking change, security update, performance improvement, new feature, minor bug fix, or other. Provide a brief explanation.
-// Respond in JSON format with two fields: "classification" and "explanation".
-// Classification must be strictly one of the following propositions: ['breaking'::text, 'security'::text, 'performance'::text, 'new_feature'::text, 'minor_fix'::text, 'other'::text]
-
-//     `.trim();
-
-    console.log(`Prompt: ${prompt}`)
+    console.log(`Processing change ${change.id} for ${url}: ${diffSummary}`);
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gemini-2.0-flash-exp',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' }
+        model: 'llama-3.1-8b-instruct',
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant that strictly follows instructions and provides structured JSON responses.' },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 150,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "ChangeClassification",
+            schema: {
+              type: "object",
+              properties: {
+                classification: {
+                  type: "string",
+                  enum: ["breaking", "security", "performance", "new_feature", "minor_fix", "other"]
+                },
+                explanation: { type: "string" }
+              },
+              additionalProperties: false,
+              required: ["classification", "explanation"]
+            }
+          }
+        }
       });
 
       const result = JSON.parse(response.choices[0].message.content);
-      const classification = result.classification;
-      const explanation = result.explanation;
-      console.log("Classification:" + classification);
-      console.log("Explanation:" + explanation);
+      const { classification, explanation } = result;
+
+      // Validate the response to ensure no undefined values
+      if (!classification || !explanation) {
+        console.error(`Invalid LLM response for change ${change.id}:`, result);
+        continue;
+      }
+
+      console.log(`Classification for change ${change.id}: ${classification}`);
+      console.log(`Explanation: ${explanation}`);
 
       const { error: updateError } = await supabase
         .from('changes')
@@ -95,30 +115,6 @@ async function classifyChanges(supabase, openai) {
       console.error(`Error classifying change ${change.id}:`, error.message);
     }
   }
-}
-
-/**
- * Converts a diff array to a human-readable string.
- * @param {Array} diff - Diff array from the diff library
- * @returns {string} Formatted diff string
- */
-// function diffToString(diff) {
-//   return diff
-//     .map(part => {
-//       if (part.added) return `+ ${part.value}`;
-//       if (part.removed) return `- ${part.value}`;
-//       return `  ${part.value}`;
-//     })
-//     .join('');
-// }
-function diffToString(diff) {
-  return diff
-    .map(part => {
-      if (part.added) return `\n ----content below was added----\n\n${part.value}`;
-      if (part.removed) return `\n ----content below was removed----\n\n${part.value}`;
-      return `\n----\n ${part.value}`;
-    })
-    .join(' ');
 }
 
 module.exports = { classifyChanges };
