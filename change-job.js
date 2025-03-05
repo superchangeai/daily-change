@@ -11,7 +11,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Initialize LiteralClient with API key from environment
 const literalClient = new LiteralClient({
-  apiKey: process.env.LITERAL_API_KEY
+  apiKey: process.env.LITERAL_API_KEY,
 });
 
 async function main() {
@@ -20,17 +20,17 @@ async function main() {
   const supabaseKey = process.env.SUPABASE_ANON_KEY;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Initialize OpenAI client for Google Gemini
-  const googleApiKey = process.env.GOOGLE_API_KEY;
+  // Initialize OpenAI client for Scaleway
+  const scwApiKey = process.env.SCALEWAY_API_KEY;
   const openai = new OpenAI({
-    apiKey: googleApiKey,
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/' // Adjust based on actual API endpoint
+    apiKey: scwApiKey,
+    baseURL: 'https://api.scaleway.ai/32c4ba40-7c02-4c97-886f-48d7c8a87755/v1',
   });
 
   literalClient.instrumentation.openai();
 
   console.log('Starting diff computation...');
-  await computeDiffs(supabase);
+  await computeDiffs(supabase, openai);
 
   console.log('Starting classification...');
   await classifyChanges(supabase, openai);
@@ -38,7 +38,7 @@ async function main() {
   console.log('Daily changes job completed');
 }
 
-main().catch(error => {
+main().catch((error) => {
   console.error('Error in change-job:', error.message);
   process.exit(1);
 });
