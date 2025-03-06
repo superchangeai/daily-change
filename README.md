@@ -2,22 +2,16 @@
 
 A lightweight Node.js service to review differences between consecutive content extractions and classify them using an LLM.
 
-All content is taken with [Daily-snapshot](https://github.com/tgenaitay/daily-snapshot), a service dedicated to scraping, capturing relevant text content and storing it as a massive JSON. 
+All content is sourced with [Daily-snapshot](https://github.com/tgenaitay/daily-snapshot), a service dedicated to scraping, capturing relevant text content and storing it in simple JSON. 
 
 ## Execution
 
 - CRON: This node script runs daily via **Github actions**, shortly after midnight. See [Daily-changes.yml](https://github.com/tgenaitay/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
-- LLMs: This service relies on `Llama 3.1 70b` for diff and `Llama 3.1 8b` for subsequent classification. Both are currently through the free OpenAI-compatible endpoints on Scaleway.
+- LLMs: This service relies on `Llama 3.1 70b` for diff and `Llama 3.1 8b` for subsequent classification. Both are currently through the free OpenAI-compatible endpoints on [Scaleway](https://www.scaleway.com/en/generative-apis/).
 - Supabase: Postgres database where sources, snapshots and changes are fetched / stored.
 - Literal: instrumentation service for our LLM calls.
 
 ## Setup
-
-1. **Install Dependencies:**
-   ```bash
-   npm install
-
-## Run locally
 
 1. **Set `.env` variables:**
 
@@ -28,7 +22,11 @@ SUPABASE_ANON_KEY=XX
 LITERAL_API_KEY=XX
 ```
 
-2. **Run service:**
+2. **Install Dependencies:**
+   ```bash
+   npm install
+
+3. **Run service:**
 
 ```bash
 node change-job.js
@@ -61,6 +59,6 @@ The project relies on two Supabase tables:
 | timestamp     | timestamp     | DEFAULT NOW()       | When the change was detected and recorded.|
 
 ## Explanation
-- Diff Computation: The _diff_ field stores the structured output of an LLM asked to comparing _snapshot_id1_ and _snapshot_id2_ from `dom_snapshots`. It is always set as a JSON object with one key "summary".
-- Classification: The _classification_ and _explanation_ fields are populated by the LLM-based classification service.
+- Diff Computation: The _diff_ field stores the structured output of an LLM asked to compare _snapshot_id1_ and _snapshot_id2_ from `dom_snapshots`. It is always set as a JSON object with one key "summary". 
+- Classification: The _classification_ and _explanation_ fields are populated by the LLM-based classification service. 
 
