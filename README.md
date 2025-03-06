@@ -1,6 +1,15 @@
 # daily-changes
 
-A lightweight Node.js service that computes differences between consecutive DOM snapshots and classifies them using an LLM, running daily via GitHub Actions.
+A lightweight Node.js service to review differences between consecutive content extractions and classify them using an LLM.
+
+All content is taken with [Daily-snapshot](https://github.com/tgenaitay/daily-snapshot), a service dedicated to scraping, capturing relevant text content and storing it as a massive JSON. 
+
+## Execution
+
+- CRON: This node script runs daily via **Github actions**, shortly after midnight. See [Daily-changes.yml](https://github.com/tgenaitay/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
+- LLMs: This service relies on `Llama 3.1 70b` for diff and `Llama 3.1 8b` for subsequent classification. Both are currently through the free OpenAI-compatible endpoints on Scaleway.
+- Supabase: Postgres database where sources, snapshots and changes are fetched / stored.
+- Literal: instrumentation service for our LLM calls.
 
 ## Setup
 
@@ -8,9 +17,26 @@ A lightweight Node.js service that computes differences between consecutive DOM 
    ```bash
    npm install
 
+## Run locally
+
+1. **Set `.env` variables:**
+
+```
+SCALEWAY_API_KEY=XX
+SUPABASE_URL=XX
+SUPABASE_ANON_KEY=XX
+LITERAL_API_KEY=XX
+```
+
+2. **Run service:**
+
+```bash
+node change-job.js
+```
+
 ## Database Schema
 
-The project uses two Supabase tables:
+The project relies on two Supabase tables:
 
 `dom_snapshots`
 
@@ -33,15 +59,8 @@ The project uses two Supabase tables:
 | classification     | TEXT     | CHECK (classification IN ('breaking', 'security', 'performance', 'new_feature', 'minor_fix', 'other'))        | Category of the change, ensuring only predefined values.|
 | explanation     | TEXT     |        | Brief explanation from the LLM about why the change was classified as such. Supports full-text search.|
 | timestamp     | timestamp     | DEFAULT NOW()       | When the change was detected and recorded.|
+
 ## Explanation
-- Diff Computation: The _diff_ field stores the result of comparing _snapshot_id1_ and _snapshot_id2_ from `dom_snapshots`.
+- Diff Computation: The _diff_ field stores the structured output of an LLM asked to comparing _snapshot_id1_ and _snapshot_id2_ from `dom_snapshots`. It is always set as a JSON object with one key "summary".
 - Classification: The _classification_ and _explanation_ fields are populated by the LLM-based classification service.
-- Querying: 
-    - Retrieve breaking changes: 
-    ```sql
-    SELECT * FROM changes WHERE classification = 'breaking' ORDER BY timestamp DESC;
-    ```
-    - Search explanations:
-    ```sql 
-    SELECT * FROM changes WHERE to_tsvector('english', explanation) @@ to_tsquery('english', 'security');
-    ```
+
