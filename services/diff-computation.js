@@ -27,10 +27,11 @@ async function diffExists(supabase, snapshotId1, snapshotId2) {
  * @param {Object} openai - OpenAI client instance for Google Gemini
  */
 async function computeDiffs(supabase, openai) {
-  // Fetch all sources
+  // Fetch all sources with is_active set to true
   const { data: sources, error: sourcesError } = await supabase
     .from('sources')
-    .select('id, url');
+    .select('id, url')
+    .eq('is_active', true);
 
   if (sourcesError) {
     console.error('Error fetching sources:', sourcesError.message);
