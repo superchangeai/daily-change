@@ -24,9 +24,10 @@ async function diffExists(supabase, snapshotId1, snapshotId2) {
 /**
  * Computes differences between consecutive snapshots using an LLM and stores them.
  * @param {Object} supabase - Supabase client instance
- * @param {Object} openai - OpenAI client instance for Google Gemini
+ * @param {Object} openai - OpenAI client instance
+ * @param {string} model - Model name used for computing diff
  */
-async function computeDiffs(supabase, openai) {
+async function computeDiffs(supabase, openai, model) {
   // Fetch all sources with is_active set to true
   const { data: sources, error: sourcesError } = await supabase
     .from('sources')
@@ -61,7 +62,7 @@ async function computeDiffs(supabase, openai) {
     const textOld = extractText(snapshotOld.content);
     const textNew = extractText(snapshotNew.content);
 
-    const diffJson = await getLLMChangeSummary(openai, textOld, textNew, source.url);
+    const diffJson = await getLLMChangeSummary(openai, model, textOld, textNew, source.url);
     if (!diffJson || !diffJson.summary || diffJson.summary.toLowerCase().includes('no significant changes')) {
       console.log(`No significant changes detected for ${source.url}`);
       continue;
@@ -109,50 +110,46 @@ function extractText(content) {
 }
 
 /**
- * Gets a human-readable change summary from the LLM as a JSON object.
- * @param {Object} openai - OpenAI client instance
- * @param {string} oldText - Older snapshot text
- * @param {string} newText - Newer snapshot text
- * @param {string} url - Source URL for context
- * @returns {Object|null} Parsed JSON object or null on error
- */
-/**
  * Gets a human-readable change summary from the LLM as a JSON object with a single "summary" key.
  * @param {Object} openai - OpenAI client instance
+ * @param {string} model - Model to consume through OpenAI sdk
  * @param {string} oldText - Older snapshot text
  * @param {string} newText - Newer snapshot text
  * @param {string} url - Source URL for context
  * @returns {Object|null} Parsed JSON object with "summary" key or null on error
  */
-async function getLLMChangeSummary(openai, oldText, newText, url) {
+async function getLLMChangeSummary(openai, model, oldText, newText, url) {
   const systemPrompt = `
   You are a helpful assistant that strictly follows instructions. 
   Do not repeat yourself.
+  Answer in 500 words or fewer. NEVER go above 2000 characters no matter what.
   `;
   const userPrompt = `
     Compare the following two texts from the documentation at ${url} and summarize the meaningful changes in a concise, human-readable format. 
-    Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
+    Limit the summary to 500 words or fewer. NEVER go above 2000 characters no matter what. 
     This page is most likely a changelog, or release note, or API specs.
+    Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
+    If it's an API, prioritize new/removed endpoints in your summary.
+    If a field is added or remove at once in multiple APIs, summarize the change as one. 
     In this context, significant changes can be many things: breaking changes, security updates, performance improvements, new options or features or models added, new dates, extended support, change of dates, deprecations, removed field, renamed field, retired dates, end of life, end of support... 
     If no significant changes are found, state "No significant changes detected." in the summary.
     Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
     Respond with a JSON object containing only the "summary" key with the change summary as a string. Do not include any additional JSON keys beyond "summary".
 
     Old text:
-    ${oldText.slice(0, 20000)}
-
+    ${oldText}
+    ---------
     New text:
-    ${newText.slice(0, 20000)}
+    ${newText}
   `.trim();
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'llama-3.1-70b-instruct', // Adjust model name if necessary
+      model: model, // defined in change-job.js
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_tokens: 1000,
       temperature: 0,
       response_format: {
         type: "json_schema",
@@ -171,8 +168,41 @@ async function getLLMChangeSummary(openai, oldText, newText, url) {
     });
 
     const jsonString = response.choices[0].message.content;
-    const parsedJson = JSON.parse(jsonString); // Convert JSON string to object
-    return parsedJson; // Returns { summary: "..." }
+    const finishReason = response.choices[0].finish_reason;
+    console.log('Finish reason:', finishReason);
+    
+    // Handle truncated JSON when finish_reason is "length"
+    if (finishReason === 'length') {
+      console.log('Response was truncated due to length. Creating clean summary object...');
+      // Extract any text content we can from the truncated response
+      let extractedText = "";
+      try {
+        // Try to extract text between quotes after "summary":
+        const summaryMatch = jsonString.match(/"summary"\s*:\s*"([^"]+)/);
+        if (summaryMatch && summaryMatch[1]) {
+          extractedText = summaryMatch[1].trim();
+          // Limit to a reasonable length and add ellipsis
+          if (extractedText.length > 40000) {
+            extractedText = extractedText.substring(0, 40000) + "...";
+          }
+        }
+      } catch (e) {
+        // If extraction fails, use default message
+      }
+      
+      // Create a clean object with the extracted text or default message
+      return {
+        summary: extractedText || "Content changes detected, but the summary was too long to process completely."
+      };
+    } else {
+      // Normal parsing for complete responses
+      try {
+        return JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error('Error parsing JSON response:', parseError.message);
+        return { summary: "Error parsing change summary response." };
+      }
+    }
   } catch (error) {
     console.error('Error getting LLM summary:', error.message);
     return null; // Return null on error to skip processing
