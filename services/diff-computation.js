@@ -125,13 +125,17 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url) {
   Answer in 500 words or fewer. NEVER go above 2000 characters no matter what.
   `;
   const userPrompt = `
-    Compare the following two texts from the documentation at ${url} and summarize the meaningful changes in a concise, human-readable format. 
-    Limit the summary to 500 words or fewer. NEVER go above 2000 characters no matter what. 
+    Compare the following two texts from the documentation at ${url} and summarize the MEANINGFUL changes in a concise, human-readable format.
+    Ask yourself: what a technical audience can't miss about this update?
+    In this context, significant changes can be many things: breaking changes, security updates, performance improvements, new options or features or models added, new dates for a migration or sunset, extended support, change of dates related to features or APIs, deprecations, removed field, renamed field, retired dates, end of life, end of support...  
+    Limit your summary to 500 words or fewer. NEVER go above 2000 characters no matter what. 
     This page is most likely a changelog, or release note, or API specs.
     Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
+    Ignore the document "last updated date", irrelevant to the point.
+    Ignore marketing events or other promotional content.
+    No need to count items on the page.
     If it's an API, prioritize new/removed endpoints in your summary.
-    If a field is added or remove at once in multiple APIs, summarize the change as one. 
-    In this context, significant changes can be many things: breaking changes, security updates, performance improvements, new options or features or models added, new dates, extended support, change of dates, deprecations, removed field, renamed field, retired dates, end of life, end of support... 
+    If a field is added or removed at once in multiple APIs, summarize the change as one. 
     If no significant changes are found, state "No significant changes detected." in the summary.
     Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
     Respond with a JSON object containing only the "summary" key with the change summary as a string. Do not include any additional JSON keys beyond "summary".
