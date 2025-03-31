@@ -42,7 +42,17 @@ async function computeDiffs(supabase, openai, model) {
     const textOld = extractText(snapshotOld.content);
     const textNew = extractText(snapshotNew.content);
 
-    const diffJson = await getLLMChangeSummary(openai, model, textOld, textNew, source.url);
+    // Get the latest change summary for this source, just in case
+    const { data: latestChange, error: changeError } = await supabase
+      .from('changes')
+      .select('diff')
+      .eq('source_id', source.id)
+      .order('timestamp', { ascending: false })
+      .limit(1);
+
+    const latestSummary = latestChange?.[0]?.diff?.summary || '';
+
+    const diffJson = await getLLMChangeSummary(openai, model, textOld, textNew, source.url, latestSummary);
     if (!diffJson || !diffJson.summary || diffJson.summary.toLowerCase().includes('no significant changes')) {
       console.log(`No significant changes detected for ${source.url}`);
       continue;
@@ -119,40 +129,54 @@ function extractText(content) {
  * @param {string} oldText - Older snapshot text
  * @param {string} newText - Newer snapshot text
  * @param {string} url - Source URL for context
- * @returns {Object|null} Parsed JSON object with "summary" key or null on error
+ * @param {string} latestSummary - Latest summary for this source if any
+* @returns {Object|null} Parsed JSON object with "summary" key or null on error
  */
-async function getLLMChangeSummary(openai, model, oldText, newText, url) {
+async function getLLMChangeSummary(openai, model, oldText, newText, url, latestSummary = '') {
   const systemPrompt = `
   You are a helpful assistant that strictly follows instructions. 
   Do not repeat yourself.
   Answer in 500 words or fewer. NEVER go above 2000 characters no matter what.
   `;
   const userPrompt = `
+    <Task>
     Compare the following two texts from the documentation at ${url} and summarize the MEANINGFUL changes in a concise, human-readable format.
-    Ask yourself: what a technical audience can't miss about this update?
+    If no significant changes are found, state "No significant changes detected." in the summary.
+    If there are significant changes, summarize them according to the rules below.
+    </Task>
+    <Context>
+    Think hard: what a technical audience can't miss about this update?
     In this context, significant changes can be many things: breaking changes, security updates, performance improvements, new options or features or models added, new dates for a migration or sunset, extended support, change of dates related to features or APIs, deprecations, removed field, renamed field, retired dates, end of life, end of support...  
-    Limit your summary to 500 words or fewer. NEVER go above 2000 characters no matter what. 
-    This page is most likely a changelog, or release note, or API specs.
+    This documentation page is most likely a changelog, or release note, or API specs.
+    ${latestSummary ? `\nHere's the previous change summary for context (do not repeat these changes):\n-------\n${latestSummary}\n-------\n` : ''}
+    </Context>
+    <Rules>
+    Remember your latest change summary if any, making sure to add value to the audience before adding another change to the log.
     Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
     Ignore the document "last updated date", irrelevant to the point.
     Ignore marketing events or other promotional content.
-    No need to count items on the page.
+    No need to count items on the page. No need to count events or items on the page.
     If it's an API, prioritize new/removed endpoints in your summary.
     If a field is added or removed at once in multiple APIs, summarize the change as one. 
     If no significant changes are found, state "No significant changes detected." in the summary.
+    </Rules>
     Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
+    <Format>
+    Limit your summary to 500 words or fewer. NEVER go above 2000 characters no matter what. 
     Respond with a JSON object containing only the "summary" key with the change summary as a string. Do not include any additional JSON keys beyond "summary".
-    Compare the following two texts
+    </Format>
+    Compare the following two texts now:
     ---------
     <Old text>
     ${oldText}
+    </Old text>
     ---------
     <New text>
     ${newText}
+    </New text>
   `.trim();
 
   try {
-    console.log('Calling the LLM now')
     const response = await openai.chat.completions.create({
       model: model, // defined in change-job.js
       messages: [
