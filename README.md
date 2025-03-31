@@ -7,7 +7,7 @@ All content is sourced with [Daily-snapshot](https://github.com/tgenaitay/daily-
 ## Execution
 
 - CRON: This node script runs daily via **Github actions**, shortly after midnight. See [Daily-changes.yml](https://github.com/tgenaitay/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
-- LLMs: This service relies on `Gemini-2.0-Flash` for diff and `Gemini-2.0-Flash-Lite` for subsequent classification. Both are sponsored by the generous free-tier from [Gemini Developer API](https://ai.google.dev/gemini-api/docs).
+- LLMs: This service currently relies on `Llama-3.3-70b-instruct` for diff and for subsequent classification. 
 - Supabase: Postgres database where sources, snapshots and changes are fetched / stored.
 - Literal: instrumentation service for our LLM calls.
 
@@ -16,7 +16,6 @@ All content is sourced with [Daily-snapshot](https://github.com/tgenaitay/daily-
 1. **Set `.env` variables:**
 
 ```
-GOOGLE_API_KEY=XX
 SUPABASE_URL=XX
 SUPABASE_ANON_KEY=XX
 LITERAL_API_KEY=XX

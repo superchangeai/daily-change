@@ -2,7 +2,7 @@ name: Daily Changes
 
 on:
   schedule:
-    - cron: '20 0 * * *' # Runs daily at 20 minutes past midnight UTC
+    - cron: '20 7 * * *' # Runs daily at 20 minutes past 7 AM UTC
   workflow_dispatch: # Allows manual triggering from GitHub UI
 
 jobs:
@@ -28,4 +28,5 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           LITERAL_API_KEY: ${{ secrets.LITERAL_API_KEY }}
