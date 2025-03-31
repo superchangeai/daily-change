@@ -6,6 +6,7 @@
 const RATE_LIMITS = {
   'gemini-2.0-flash': 15, // 15 RPM
   'gemini-2.0-flash-lite': 30, // 30 RPM
+  'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free': 60, // 60 RPM
   // Add other models as needed
 };
 

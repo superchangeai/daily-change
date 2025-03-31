@@ -1,27 +1,4 @@
 /**
- * Checks if a diff already exists for the given snapshot pair.
- * @param {Object} supabase - Supabase client instance
- * @param {number} snapshotId1 - Older snapshot ID
- * @param {number} snapshotId2 - Newer snapshot ID
- * @returns {boolean} True if diff exists
- */
-async function diffExists(supabase, snapshotId1, snapshotId2) {
-  const { data, error } = await supabase
-    .from('changes')
-    .select('id')
-    .eq('snapshot_id1', snapshotId1)
-    .eq('snapshot_id2', snapshotId2)
-    .limit(1);
-
-  if (error) {
-    console.error('Error checking existing diff:', error.message);
-    return false; // Default to false on error to proceed with insertion
-  }
-
-  return data.length > 0;
-}
-
-/**
  * Computes differences between consecutive snapshots using an LLM and stores them.
  * @param {Object} supabase - Supabase client instance
  * @param {Object} openai - OpenAI client instance
@@ -59,6 +36,9 @@ async function computeDiffs(supabase, openai, model) {
     }
 
     const [snapshotNew, snapshotOld] = snapshots;
+    console.log('Processing snapshot', snapshotOld.id)
+    console.log('vs...')
+    console.log('snapshot', snapshotNew.id)
     const textOld = extractText(snapshotOld.content);
     const textNew = extractText(snapshotNew.content);
 
@@ -92,6 +72,29 @@ async function computeDiffs(supabase, openai, model) {
       console.log(`Diff stored for ${source.url}`);
     }
   }
+}
+
+/**
+ * Checks if a diff already exists for the given snapshot pair.
+ * @param {Object} supabase - Supabase client instance
+ * @param {number} snapshotId1 - Older snapshot ID
+ * @param {number} snapshotId2 - Newer snapshot ID
+ * @returns {boolean} True if diff exists
+ */
+async function diffExists(supabase, snapshotId1, snapshotId2) {
+  const { data, error } = await supabase
+    .from('changes')
+    .select('id')
+    .eq('snapshot_id1', snapshotId1)
+    .eq('snapshot_id2', snapshotId2)
+    .limit(1);
+
+  if (error) {
+    console.error('Error checking existing diff:', error.message);
+    return false; // Default to false on error to proceed with insertion
+  }
+
+  return data.length > 0;
 }
 
 /**
@@ -149,6 +152,7 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url) {
   `.trim();
 
   try {
+    console.log('Calling the LLM now')
     const response = await openai.chat.completions.create({
       model: model, // defined in change-job.js
       messages: [

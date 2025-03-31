@@ -21,27 +21,41 @@ async function main() {
   const supabaseKey = process.env.SUPABASE_ANON_KEY;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // // Initialize OpenAI client for Scaleway
-  // const scwApiKey = process.env.SCALEWAY_API_KEY;
-  // const openai = new OpenAI({
-  //   apiKey: scwApiKey,
-  //   baseURL: 'https://api.scaleway.ai/32c4ba40-7c02-4c97-886f-48d7c8a87755/v1',
-  // });
+  // several OpenAI-compatible providers
+  const providers = {
+    scaleway: {
+      apiKey: process.env.SCALEWAY_API_KEY,
+      baseURL: 'https://api.scaleway.ai/v1',
+      differ: 'llama-3.3-70b-instruct',
+      classifier: 'llama-3.3-70b-instruct'
+    },
+    gemini: {
+      apiKey: process.env.GOOGLE_API_KEY,
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      differ: 'gemini-2.0-flash',
+      classifier: 'gemini-2.0-flash-lite'
+    },
+    together: {
+      apiKey: process.env.TOGETHER_API_KEY,
+      baseURL: 'https://api.together.xyz/v1/',
+      differ: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
+      classifier: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free'
+    }
+  };
 
-  // Initialize OpenAI client for Gemini
-  const geminiApiKey = process.env.GOOGLE_API_KEY;
+  // Initialize OpenAI client with one provider
+  const currentProvider = 'scaleway';
+
   const openai = new OpenAI({
-    apiKey: geminiApiKey,
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    apiKey: providers[currentProvider].apiKey,
+    baseURL: providers[currentProvider].baseURL
   });
+
+  const differ = providers[currentProvider].differ; // this model will analyze the difference between two large strings and output a summary in JSON format. Large context matters.
+  const classifier = providers[currentProvider].classifier; // this model will review the diff, tag it and explain its classification, all in JSON schema. Smaller models can do.
 
   // Create rate-limited client
   const rateLimitedOpenAI = createRateLimitedClient(openai);
-
-  const differ = 'gemini-2.0-flash'; // this model will analyze the difference between two large strings and output a summary in JSON format. Large context matters.
-  const classifier = 'gemini-2.0-flash-lite'; // this model will review the diff, tag it and explain its classification, all in JSON schema. Smaller models can do.
-
-  // setting both at flash-lite for its 30 RPM rate limit on free tier https://ai.google.dev/gemini-api/docs/rate-limits#free-tier
 
   literalClient.instrumentation.openai();
 
