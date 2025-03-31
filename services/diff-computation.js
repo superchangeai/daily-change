@@ -139,11 +139,12 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url) {
     If no significant changes are found, state "No significant changes detected." in the summary.
     Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
     Respond with a JSON object containing only the "summary" key with the change summary as a string. Do not include any additional JSON keys beyond "summary".
-
-    Old text:
+    Compare the following two texts
+    ---------
+    <Old text>
     ${oldText}
     ---------
-    New text:
+    <New text>
     ${newText}
   `.trim();
 
