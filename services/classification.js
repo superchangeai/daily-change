@@ -2,9 +2,9 @@
  * Classifies unclassified changes using an LLM.
  * @param {Object} supabase - Supabase client instance
  * @param {Object} openai - OpenAI client instance
- * @param {string} model - Model name used for classifyng changes
+ * @param {Object} classifier - Model used for classifyng changes
  */
-async function classifyChanges(supabase, openai, model) {
+async function classifyChanges(supabase, openai, classifier) {
   // Fetch unclassified changes with their source URLs
   const { data: changes, error: changesError } = await supabase
     .from('changes')
@@ -64,7 +64,7 @@ async function classifyChanges(supabase, openai, model) {
 
     try {
       const response = await openai.chat.completions.create({
-        model: model,
+        model: classifier.model,
         messages: [
           { role: 'system', content: 'You are a helpful assistant that strictly follows instructions and provides structured JSON responses.' },
           { role: 'user', content: prompt },
