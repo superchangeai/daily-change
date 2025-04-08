@@ -2,11 +2,11 @@
 
 A lightweight Node.js service to review differences between consecutive content extractions and classify them using an LLM.
 
-All content is sourced with [Daily-snapshot](https://github.com/tgenaitay/daily-snapshot), a service dedicated to scraping, capturing relevant text content and storing it in simple JSON. 
+All content is sourced with [Daily-snapshot](https://github.com/superchangeai/daily-snapshot), a service dedicated to scraping, capturing relevant text content and storing it in simple JSON. 
 
 ## Execution
 
-- CRON: This node script runs daily via **Github actions**, shortly after midnight. See [Daily-changes.yml](https://github.com/tgenaitay/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
+- CRON: This node script runs daily via **Github actions**, shortly after midnight. See [Daily-changes.yml](https://github.com/superchangeai/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
 - LLMs: This service currently relies on `Llama-3.3-70b-instruct` for diff and for subsequent classification. 
 - Supabase: Postgres database where sources, snapshots and changes are fetched / stored.
 - Literal: instrumentation service for our LLM calls.

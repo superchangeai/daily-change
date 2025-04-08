@@ -1,8 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
-const { LiteralClient } = require('@literalai/client');
-const { computeDiffs } = require('./services/diff-computation');
-const { classifyChanges } = require('./services/classification');
+// const { LiteralClient } = require('@literalai/client');
+const { testDiff } = require('./services/diff-computation');
+// const { classifyChanges } = require('./services/classification');
 const { createRateLimitedClient } = require('./services/rate-limiter');
 
 // Only load dotenv if running locally
@@ -10,10 +10,10 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-// Initialize LiteralClient with API key from environment
-const literalClient = new LiteralClient({
-  apiKey: process.env.LITERAL_API_KEY,
-});
+// // Initialize LiteralClient with API key from environment
+// const literalClient = new LiteralClient({
+//   apiKey: process.env.LITERAL_API_KEY,
+// });
 
 async function main() {
   // Initialize Supabase client
@@ -42,7 +42,6 @@ async function main() {
       classifier: {model:'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',context: 131000},
     }
   };
-
   // Initialize OpenAI client with one provider
   const currentProvider = 'scaleway';
 
@@ -52,23 +51,26 @@ async function main() {
   });
 
   const differ = providers[currentProvider].differ; // this model will analyze the difference between two large strings and output a summary in JSON format. Large context matters.
-  const classifier = providers[currentProvider].classifier; // this model will review the diff, tag it and explain its classification, all in JSON schema. Smaller models can do.
+  // const classifier = providers[currentProvider].classifier; // this model will review the diff, tag it and explain its classification, all in JSON schema. Smaller models can do.
 
   // Create rate-limited client
   const rateLimitedOpenAI = createRateLimitedClient(openai);
 
-  literalClient.instrumentation.openai();
+  // literalClient.instrumentation.openai();
 
-  console.log('----- 1. Starting diff computation...');
-  await computeDiffs(supabase, rateLimitedOpenAI, differ);
+  const TestSnapshotId1 = 524;
+  const TestSnapshotId2 = 536;
 
-  console.log('----- 2. Starting classification...');
-  await classifyChanges(supabase, rateLimitedOpenAI, classifier);
+  console.log('----- 1. Starting test diff computation...');
+  await testDiff(supabase, rateLimitedOpenAI, differ, TestSnapshotId1, TestSnapshotId2);
 
-  console.log('Daily changes job completed');
+  // console.log('----- 2. Starting classification...');
+  // await classifyChanges(supabase, rateLimitedOpenAI, classifier);
+
+  console.log('Test job completed');
 }
 
 main().catch((error) => {
-  console.error('Error in change-job:', error.message);
+  console.error('Error in test-job:', error.message);
   process.exit(1);
 });

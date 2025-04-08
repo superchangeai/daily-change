@@ -2,9 +2,9 @@
  * Computes differences between consecutive snapshots using an LLM and stores them.
  * @param {Object} supabase - Supabase client instance
  * @param {Object} openai - OpenAI client instance
- * @param {string} model - Model name used for computing diff
+ * @param {string} differ - Model used for computing diff
  */
-async function computeDiffs(supabase, openai, model) {
+async function computeDiffs(supabase, openai, differ) {
   // Fetch all sources with is_active set to true
   const { data: sources, error: sourcesError } = await supabase
     .from('sources')
@@ -39,8 +39,8 @@ async function computeDiffs(supabase, openai, model) {
     console.log('Processing snapshot', snapshotOld.id)
     console.log('vs...')
     console.log('snapshot', snapshotNew.id)
-    const textOld = extractText(snapshotOld.content);
-    const textNew = extractText(snapshotNew.content);
+    let textOld = extractText(snapshotOld.content);
+    let textNew = extractText(snapshotNew.content);
 
     // Get the latest change summary for this source, just in case
     const { data: latestChange, error: changeError } = await supabase
@@ -52,8 +52,27 @@ async function computeDiffs(supabase, openai, model) {
 
     const latestSummary = latestChange?.[0]?.diff?.summary || '';
 
-    const diffJson = await getLLMChangeSummary(openai, model, textOld, textNew, source.url, latestSummary);
-    if (!diffJson || !diffJson.summary || diffJson.summary.toLowerCase().includes('no significant changes')) {
+    // 1 token is roughly 4 characters, so we multiply context window by 4 to get the number of characters allowed in theory
+    // my prompt is 3000 chars give or take, we need to save this space
+    // two huge texts will get inserted in the prompt, we divide space by 3 just to avoid over stuffing the model
+    const maxChars = Math.round((differ.context * 4 - 3000) / 3);
+    // console.log('We re allowed up to', maxChars, 'chars per text')
+    
+    if (textOld.length > maxChars) {
+      textOld = textOld.slice(0, maxChars);
+      console.log('TextOld was too long, trimmed to', textOld.length, 'chars, which is roughly', Math.round(textOld.length/4), 'tokens')
+    }
+    if (textNew.length > maxChars) {
+      textNew = textNew.slice(0, maxChars);
+      console.log('TextNew was too long, trimmed to', textNew.length, 'chars, which is roughly', Math.round(textNew.length/4), 'tokens')
+    }
+
+    const diffJson = await getLLMChangeSummary(openai, differ.model, textOld, textNew, source.url, latestSummary);
+    if (!diffJson || !diffJson.summary) {
+      console.log(`Could not get a summary for ${source.url}, see further logs for troubleshoot.`);
+      continue;
+    }
+    else if (diffJson.summary.toLowerCase().includes('no significant changes')) {
       console.log(`No significant changes detected for ${source.url}`);
       continue;
     }
@@ -177,6 +196,8 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url, latestS
   `.trim();
 
   try {
+    console.log('Now sending request to LLM:', model);
+    console.log('userPrompt length', userPrompt.length);
     const response = await openai.chat.completions.create({
       model: model, // defined in change-job.js
       messages: [
@@ -242,4 +263,119 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url, latestS
   }
 }
 
-module.exports = { computeDiffs };
+/**
+ * TEST FUNCTION: Processes specific snapshots with verbose logging
+ * @param {Object} supabase - Supabase client instance
+ * @param {Object} openai - OpenAI client instance
+ * @param {Object} differ - Model used for computing diff
+ * @param {number} snapshotId1 - Older snapshot ID
+ * @param {number} snapshotId2 - Newer snapshot ID
+ */
+
+async function testDiff(supabase, openai, differ, snapshotId1, snapshotId2) {
+  console.log('\n=== STARTING TEST DIFF PROCESS ===');
+  console.log(`Processing snapshots ${snapshotId1} vs ${snapshotId2}`);
+
+  // Get both snapshots by ID
+  console.log('\n1. Fetching specific snapshots...');
+  const { data: snapshots, error: snapshotsError } = await supabase
+    .from('dom_snapshots')
+    .select('id, content, url')
+    .in('id', [snapshotId1, snapshotId2]);
+
+  if (snapshotsError || snapshots.length !== 2) {
+    console.error('Error fetching snapshots:', snapshotsError?.message || 'Missing snapshots');
+    return;
+  }
+
+  const [snapshotOld, snapshotNew] = snapshots.sort((a, b) => a.id - b.id);
+  console.log(`2. Retrieved snapshots for URL: ${snapshotOld.url}`);
+  console.log(`   Old snapshot ID: ${snapshotOld.id}, New snapshot ID: ${snapshotNew.id}`);
+
+  // Extract text with verbose logging
+  console.log('\n3. Extracting text content...');
+  let textOld = extractText(snapshotOld.content);
+  let textNew = extractText(snapshotNew.content);
+  console.log(`   Old text length: ${textOld.length} chars, which is roughly ${Math.round(textOld.length/4)} tokens`);
+  console.log(`   New text length: ${textNew.length} chars, which is roughly ${Math.round(textNew.length/4)} tokens`);
+
+  // 1 token is roughly 4 characters, so we multiply context window by 4 to get the number of characters allowed in theory
+  // my prompt is 3000 chars give or take, we need to save this space
+  // two huge texts will get inserted in the prompt, we divide space by 3 just to avoid over stuffing the model
+
+  const maxChars = Math.round((differ.context * 4 - 3000) / 3);
+  console.log('We re allowed up to', maxChars, 'chars per text')
+
+  if (textOld.length > maxChars) {
+    textOld = textOld.slice(0, maxChars);
+    console.log('TextOld was too long, trimmed to', textOld.length, 'chars, which is roughly', Math.round(textOld.length/4), 'tokens')
+  }
+  if (textNew.length > maxChars) {
+    textNew = textNew.slice(0, maxChars);
+    console.log('TextNew was too long, trimmed to', textNew.length, 'chars, which is roughly', Math.round(textNew.length/4), 'tokens')
+  }
+  
+  // Get associated source
+  console.log('\n4. Finding source for URL...');
+  const { data: source, error: sourceError } = await supabase
+    .from('sources')
+    .select('id')
+    .eq('url', snapshotOld.url)
+    .eq('is_active', true)
+    .single();
+
+  if (sourceError || !source) {
+    console.error('Source not found or inactive:', sourceError?.message || 'No active source');
+    return;
+  }
+  console.log(`   Found source ID: ${source.id}`);
+
+  // Get latest change summary
+  console.log('\n5. Checking for previous summaries...');
+  const { data: latestChange, error: changeError } = await supabase
+    .from('changes')
+    .select('diff')
+    .eq('source_id', source.id)
+    .order('timestamp', { ascending: false })
+    .limit(1);
+
+  const latestSummary = latestChange?.[0]?.diff?.summary || '';
+  console.log(`   Previous summary exists: ${!!latestSummary}`);
+
+  // Generate diff summary
+  console.log('\n6. Generating LLM summary...');
+  const diffJson = await getLLMChangeSummary(openai, differ.model, textOld, textNew, snapshotOld.url, latestSummary);
+  
+  if (!diffJson) {
+    console.error('7. Aborting - LLM summary generation failed completely');
+    return;
+  }
+  
+  if (!diffJson.summary) {
+    console.error('7. Aborting - LLM returned response but summary is missing');
+    console.error('   Response received:', diffJson);
+    return;
+  }
+
+  console.log(`   Summary generated (${diffJson.summary.length} chars):`, diffJson.summary.substring(0, 100) + '...');
+
+  // Check existing diffs
+  console.log('\n7. Checking for existing diff...');
+  const exists = await diffExists(supabase, snapshotId1, snapshotId2);
+  console.log(`   Diff already exists: ${exists}`);
+
+  if (!exists) {
+    console.log('\n8. Diff summary that would be stored:');
+    console.log(JSON.stringify({
+      source_id: source.id,
+      snapshot_id1: snapshotId1,
+      snapshot_id2: snapshotId2,
+      diff: diffJson,
+      timestamp: new Date().toISOString()
+    }, null, 2));
+  }
+
+  console.log('\n=== TEST PROCESS COMPLETE ===\n');
+}
+
+module.exports = { computeDiffs, testDiff };
