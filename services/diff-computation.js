@@ -54,20 +54,22 @@ async function computeDiffs(supabase, openai, differ) {
 
     // 1 token is roughly 4 characters, so we multiply context window by 4 to get the number of characters allowed in theory
     // my prompt is 3000 chars give or take, we need to save this space
-    // two huge texts will get inserted in the prompt, we divide space by 3 just to avoid over stuffing the model
-    const maxChars = Math.round((differ.context * 4 - 3000) / 3);
+    // two huge texts will get inserted in the prompt, we divide space by 6 just to avoid over stuffing the model
+    const maxChars = Math.round((differ.context * 4 - 3000) / 6);
     // console.log('We re allowed up to', maxChars, 'chars per text')
-    
+    let trim = 0;
     if (textOld.length > maxChars) {
       textOld = textOld.slice(0, maxChars);
+      trim = maxChars;
       console.log('TextOld was too long, trimmed to', textOld.length, 'chars, which is roughly', Math.round(textOld.length/4), 'tokens')
     }
     if (textNew.length > maxChars) {
       textNew = textNew.slice(0, maxChars);
+      trim = maxChars;
       console.log('TextNew was too long, trimmed to', textNew.length, 'chars, which is roughly', Math.round(textNew.length/4), 'tokens')
     }
 
-    const diffJson = await getLLMChangeSummary(openai, differ.model, textOld, textNew, source.url, latestSummary);
+    const diffJson = await getLLMChangeSummary(openai, differ.model, textOld, textNew, source.url, latestSummary, trim);
     if (!diffJson || !diffJson.summary) {
       console.log(`Could not get a summary for ${source.url}, see further logs for troubleshoot.`);
       continue;
@@ -149,37 +151,40 @@ function extractText(content) {
  * @param {string} newText - Newer snapshot text
  * @param {string} url - Source URL for context
  * @param {string} latestSummary - Latest summary for this source if any
+ * @param {number} trim - Number of characters trimmed from the texts
 * @returns {Object|null} Parsed JSON object with "summary" key or null on error
  */
-async function getLLMChangeSummary(openai, model, oldText, newText, url, latestSummary = '') {
+async function getLLMChangeSummary(openai, model, oldText, newText, url, latestSummary = '', trim) {
   const systemPrompt = `
   You are a helpful assistant that strictly follows instructions. 
   Do not repeat yourself.
   Answer in 500 words or fewer. NEVER go above 2000 characters no matter what.
-  `;
-  const userPrompt = `
-    <Task>
-    Compare the following two texts from the documentation at ${url} and summarize the MEANINGFUL changes in a concise, human-readable format.
+  <Task>
+    Compare the following two texts from the documentation at ${url} and summarize the MEANINGFUL changes between the two texts in a concise, human-readable format.
     If no significant changes are found, state "No significant changes detected." in the summary.
     If there are significant changes, summarize them according to the rules below.
-    </Task>
+  </Task>
+  `;
+  const userPrompt = `
     <Context>
     Think hard: what a technical audience can't miss about this update?
     In this context, significant changes can be many things: breaking changes, security updates, performance improvements, new options or features or models added, new dates for a migration or sunset, extended support, change of dates related to features or APIs, deprecations, removed field, renamed field, retired dates, end of life, end of support...  
     This documentation page is most likely a changelog, or release note, or API specs.
-    ${latestSummary ? `\nHere's the previous change summary for context (do not repeat these changes):\n-------\n${latestSummary}\n-------\n` : ''}
+    ${latestSummary ? `\nHere's the previous change summary for context (DO NOT REPEAT these changes in your summary):\n-------\n${latestSummary}\n-------\n` : ''}
     </Context>
     <Rules>
-    Remember your latest change summary if any, making sure to add value to the audience before adding another change to the log.
-    Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
-    Ignore the document "last updated date", irrelevant to the point.
-    Ignore marketing events or other promotional content.
-    No need to count items on the page. No need to count events or items on the page.
-    If it's an API, prioritize new/removed endpoints in your summary.
-    If a field is added or removed at once in multiple APIs, summarize the change as one. 
-    If no significant changes are found, state "No significant changes detected." in the summary.
+    1. Remember your latest change summary if any, making sure to add value to the audience before adding another change to the log.
+    2. Ignore minor formatting or whitespace differences and focus on content updates, additions, or removals.
+    3. Ignore the document "last updated date", irrelevant to the point.
+    4. Ignore marketing events or other promotional content.
+    5. No need to count items on the page. No need to count events or items on the page.
+    6. If it's an API, prioritize new/removed endpoints in your summary.
+    7. If a field is added or removed at once in multiple APIs, summarize the change as one. 
+    8. If no significant changes are found, state "No significant changes detected." in the summary.
+    IMPORTANT
+    - Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
+    ${trim > 0 ? `\n- The texts were trimmed to ${trim} chars to avoid overfilling the model context window.` : ''}
     </Rules>
-    Be aware the two texts come from headless browser captures, and variations may arise from scraping or storage differences.
     <Format>
     Limit your summary to 500 words or fewer. NEVER go above 2000 characters no matter what. 
     Respond with a JSON object containing only the "summary" key with the change summary as a string. Do not include any additional JSON keys beyond "summary".
@@ -188,11 +193,18 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url, latestS
     ---------
     <Old text>
     ${oldText}
+    ${trim > 0 ? `\n The text above was trimmed to ${trim} chars to avoid overfilling the model context window.` : ''}
     </Old text>
     ---------
     <New text>
     ${newText}
+    ${trim > 0 ? `\n The text above was trimmed to ${trim} chars to avoid overfilling the model context window.` : ''}
     </New text>
+    Now, compare the above two texts from the documentation at ${url} and summarize the MEANINGFUL changes between the two texts in a concise, human-readable format.
+    REMEMBER:
+    - If no significant changes are found, state "No significant changes detected." in the summary.
+    - If there are significant changes, summarize them according to the rules given above.
+    ${latestSummary ? `\n- Here's your latest change summary for context (DO NOT REPEAT these changes in your new summary):\n-------\n${latestSummary}\n-------\n` : ''}
   `.trim();
 
   try {
@@ -223,7 +235,7 @@ async function getLLMChangeSummary(openai, model, oldText, newText, url, latestS
 
     const jsonString = response.choices[0].message.content;
     const finishReason = response.choices[0].finish_reason;
-    console.log('Finish reason:', finishReason);
+    console.log('LLM finish reason:', finishReason);
     
     // Handle truncated JSON when finish_reason is "length"
     if (finishReason === 'length') {
@@ -301,20 +313,21 @@ async function testDiff(supabase, openai, differ, snapshotId1, snapshotId2) {
 
   // 1 token is roughly 4 characters, so we multiply context window by 4 to get the number of characters allowed in theory
   // my prompt is 3000 chars give or take, we need to save this space
-  // two huge texts will get inserted in the prompt, we divide space by 3 just to avoid over stuffing the model
+  // two huge texts will get inserted in the prompt, we divide space by 6 just to avoid over stuffing the model
 
-  const maxChars = Math.round((differ.context * 4 - 3000) / 3);
+  const maxChars = Math.round((differ.context * 4 - 3000) / 6);
   console.log('We re allowed up to', maxChars, 'chars per text')
-
+  let trim = 0;
   if (textOld.length > maxChars) {
     textOld = textOld.slice(0, maxChars);
+    trim = maxChars;
     console.log('TextOld was too long, trimmed to', textOld.length, 'chars, which is roughly', Math.round(textOld.length/4), 'tokens')
   }
   if (textNew.length > maxChars) {
     textNew = textNew.slice(0, maxChars);
+    trim = maxChars;
     console.log('TextNew was too long, trimmed to', textNew.length, 'chars, which is roughly', Math.round(textNew.length/4), 'tokens')
-  }
-  
+  }  
   // Get associated source
   console.log('\n4. Finding source for URL...');
   const { data: source, error: sourceError } = await supabase
@@ -344,7 +357,7 @@ async function testDiff(supabase, openai, differ, snapshotId1, snapshotId2) {
 
   // Generate diff summary
   console.log('\n6. Generating LLM summary...');
-  const diffJson = await getLLMChangeSummary(openai, differ.model, textOld, textNew, snapshotOld.url, latestSummary);
+  const diffJson = await getLLMChangeSummary(openai, differ.model, textOld, textNew, snapshotOld.url, latestSummary, trim);
   
   if (!diffJson) {
     console.error('7. Aborting - LLM summary generation failed completely');

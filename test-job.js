@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
-// const { LiteralClient } = require('@literalai/client');
+const { LiteralClient } = require('@literalai/client');
 const { testDiff } = require('./services/diff-computation');
 // const { classifyChanges } = require('./services/classification');
 const { createRateLimitedClient } = require('./services/rate-limiter');
@@ -10,10 +10,10 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-// // Initialize LiteralClient with API key from environment
-// const literalClient = new LiteralClient({
-//   apiKey: process.env.LITERAL_API_KEY,
-// });
+// Initialize LiteralClient with API key from environment
+const literalClient = new LiteralClient({
+  apiKey: process.env.LITERAL_API_KEY,
+});
 
 async function main() {
   // Initialize Supabase client
@@ -56,10 +56,10 @@ async function main() {
   // Create rate-limited client
   const rateLimitedOpenAI = createRateLimitedClient(openai);
 
-  // literalClient.instrumentation.openai();
+  literalClient.instrumentation.openai();
 
-  const TestSnapshotId1 = 524;
-  const TestSnapshotId2 = 536;
+  const TestSnapshotId1 = 549;
+  const TestSnapshotId2 = 561;
 
   console.log('----- 1. Starting test diff computation...');
   await testDiff(supabase, rateLimitedOpenAI, differ, TestSnapshotId1, TestSnapshotId2);
