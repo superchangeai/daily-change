@@ -6,10 +6,9 @@ All content is sourced with [Daily-snapshot](https://github.com/superchangeai/da
 
 ## Execution
 
-- CRON: This node script runs daily via **Github actions**, shortly after midnight. See [Daily-changes.yml](https://github.com/superchangeai/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
+- CRON: This node script runs daily via **Github actions**, shortly after 7AM. See [Daily-changes.yml](https://github.com/superchangeai/daily-change/blob/main/.github/workflows/daily-changes.yml) for details.
 - LLMs: This service currently relies on `Llama-3.3-70b-instruct` for diff and for subsequent classification. 
 - Supabase: Postgres database where sources, snapshots and changes are fetched / stored.
-- Literal: instrumentation service for our LLM calls.
 
 ## Setup
 
@@ -18,7 +17,6 @@ All content is sourced with [Daily-snapshot](https://github.com/superchangeai/da
 ```
 SUPABASE_URL=XX
 SUPABASE_ANON_KEY=XX
-LITERAL_API_KEY=XX
 ```
 
 2. **Install Dependencies:**
