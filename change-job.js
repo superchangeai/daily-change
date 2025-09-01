@@ -1,6 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
-const { LiteralClient } = require('@literalai/client');
 const { computeDiffs } = require('./services/diff-computation');
 const { classifyChanges } = require('./services/classification');
 const { createRateLimitedClient } = require('./services/rate-limiter');
@@ -9,11 +8,6 @@ const { createRateLimitedClient } = require('./services/rate-limiter');
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
-
-// Initialize LiteralClient with API key from environment
-const literalClient = new LiteralClient({
-  apiKey: process.env.LITERAL_API_KEY,
-});
 
 async function main() {
   // Initialize Supabase client
@@ -56,8 +50,6 @@ async function main() {
 
   // Create rate-limited client
   const rateLimitedOpenAI = createRateLimitedClient(openai);
-
-  literalClient.instrumentation.openai();
 
   console.log('----- 1. Starting diff computation...');
   await computeDiffs(supabase, rateLimitedOpenAI, differ);
