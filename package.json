@@ -7,7 +7,6 @@
         "start": "node change-job.js"
     },
     "dependencies": {
-        "@literalai/client": "^0.1.5",
         "@supabase/supabase-js": "^2.45.4",
         "dotenv": "^16.4.5",
         "openai": "^4.65.0"
